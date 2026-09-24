@@ -22,6 +22,7 @@ it('shows a persisted run, its timeline, and stops the selected session', async 
   render(<RunHistory />)
   expect(await screen.findByText('repl')).toBeTruthy()
   expect(screen.getByText('5')).toBeTruthy()
+  expect(screen.getByText('$0.000022')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
   await waitFor(() => expect(stop).toHaveBeenCalledWith('default', 'session.interrupt', { session_id: 'session' }))
 })

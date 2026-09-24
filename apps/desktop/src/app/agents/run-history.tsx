@@ -38,6 +38,7 @@ interface Span {
 }
 
 const money = (value: number | null) => value === null ? 'unpriced' : value === 0 ? '$0' : `$${value.toFixed(4)}`
+const grokEstimate = (input: number, output: number) => `$${((input * 2 + output * 6) / 1_000_000).toFixed(6)}`
 const duration = (start: number, end: number | null) => `${((Math.max(start, end ?? Date.now()) - start) / 1000).toFixed(1)}s`
 const time = (value: number) => new Date(value).toLocaleString()
 
@@ -159,7 +160,7 @@ export function RunHistory() {
         <div className="mt-5 grid grid-cols-3 gap-4 bg-[#f9f8f6] p-4 text-sm">
           <div><div className="text-xs text-[#545454]">Duration</div><div className="mt-1 font-medium">{duration(run.started_at_ms, run.ended_at_ms)}</div></div>
           <div><div className="text-xs text-[#545454]">Tokens</div><div className="mt-1 font-medium">{(run.input_tokens + run.output_tokens).toLocaleString()}</div><div className="mt-1 text-xs text-[#545454]">{run.input_tokens.toLocaleString()} in · {run.output_tokens.toLocaleString()} out<br />{run.cache_read_tokens.toLocaleString()} cache read · {run.cache_write_tokens.toLocaleString()} write</div></div>
-          <div><div className="text-xs text-[#545454]">API cost</div><div className="mt-1 font-medium">{money(run.cost_usd)}</div></div>
+          <div>{run.provider.toLowerCase() === 'ollama' ? <><div className="text-xs text-[#545454]">Grok 4.7 xHigh estimate</div><div className="mt-1 font-medium">{grokEstimate(run.input_tokens, run.output_tokens)}</div><div className="mt-1 text-xs text-[#545454]">Actual API cost {money(run.cost_usd)}</div></> : <><div className="text-xs text-[#545454]">API cost</div><div className="mt-1 font-medium">{money(run.cost_usd)}</div></>}</div>
         </div>
         {root && root.id !== run.id && <button className="mt-4 text-sm text-[#3b3b3b] hover:text-[#0a0a0a]" onClick={() => { setSelected(root.id); setSpans([]); setContent(null) }} type="button">View parent run: {root.session_id}</button>}
         {run.error && <p className="mt-4 rounded-md bg-[#f2ede5] p-3 text-sm" role="alert">{run.error}</p>}
