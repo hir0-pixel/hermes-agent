@@ -23,6 +23,8 @@ import {
 
 import { Panel, PanelEmpty, PanelHeader } from '../overlays/panel'
 
+import { RunHistory } from './run-history'
+
 // Mirrors statusGlyph() in tool-fallback.tsx so subagent rows speak the
 // same visual vocabulary as the chat tool blocks.
 function statusGlyph(status: SubagentStatus, a: Translations['agents']): ReactNode {
@@ -81,6 +83,7 @@ interface AgentsViewProps {
 export function AgentsView({ onClose }: AgentsViewProps) {
   const { t } = useI18n()
   const subagentsBySession = useStore($subagentsBySession)
+  const [tab, setTab] = useState<'live' | 'history'>('live')
 
   // Aggregate every session, matching the status-bar indicator — a subagent
   // running in a background session must still be visible here, or the two
@@ -89,14 +92,17 @@ export function AgentsView({ onClose }: AgentsViewProps) {
 
   return (
     <Panel closeLabel={t.agents.close} onClose={onClose}>
-      {tree.length === 0 ? (
+      <PanelHeader
+        actions={<div aria-label="Agent view" className="flex gap-1">
+          <button aria-pressed={tab === 'live'} className="rounded-md px-2 py-1 text-xs aria-pressed:bg-foreground aria-pressed:text-background" onClick={() => setTab('live')} type="button">Live</button>
+          <button aria-pressed={tab === 'history'} className="rounded-md px-2 py-1 text-xs aria-pressed:bg-foreground aria-pressed:text-background" onClick={() => setTab('history')} type="button">History</button>
+        </div>}
+        subtitle={tab === 'history' ? 'Local runs, tools, and model usage.' : t.agents.subtitle}
+        title={tab === 'history' ? 'Activity' : t.agents.title}
+      />
+      {tab === 'history' ? <RunHistory /> : tree.length === 0 ? (
         <PanelEmpty description={t.agents.emptyDesc} icon="hubot" title={t.agents.emptyTitle} />
-      ) : (
-        <>
-          <PanelHeader subtitle={t.agents.subtitle} title={t.agents.title} />
-          <SubagentTree tree={tree} />
-        </>
-      )}
+      ) : <SubagentTree tree={tree} />}
     </Panel>
   )
 }
