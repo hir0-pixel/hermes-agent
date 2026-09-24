@@ -1,3 +1,4 @@
+/* global window, document, innerWidth, innerHeight, devicePixelRatio -- used inside page.evaluate */
 // Capture the actual packaged Hermes UI against a local Sovereign run ledger.
 // SOVEREIGN_BIN and SOVEREIGN_SCREENSHOT_HOME point at the built engine and an
 // isolated JCODE_HOME containing observability.sqlite3.
