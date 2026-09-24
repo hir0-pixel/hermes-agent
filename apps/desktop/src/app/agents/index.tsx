@@ -8,6 +8,7 @@ import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
 import { Codicon } from '@/components/ui/codicon'
 import { FadeText } from '@/components/ui/fade-text'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { type Translations, useI18n } from '@/i18n'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
@@ -93,10 +94,16 @@ export function AgentsView({ onClose }: AgentsViewProps) {
   return (
     <Panel closeLabel={t.agents.close} onClose={onClose}>
       <PanelHeader
-        actions={<div aria-label="Agent view" className="flex gap-1">
-          <button aria-pressed={tab === 'live'} className="rounded-md px-2 py-1 text-xs aria-pressed:bg-foreground aria-pressed:text-background" onClick={() => setTab('live')} type="button">Live</button>
-          <button aria-pressed={tab === 'history'} className="rounded-md px-2 py-1 text-xs aria-pressed:bg-foreground aria-pressed:text-background" onClick={() => setTab('history')} type="button">History</button>
-        </div>}
+        actions={
+          <SegmentedControl
+            onChange={setTab}
+            options={[
+              { id: 'live', label: 'Live' },
+              { id: 'history', label: 'History' }
+            ]}
+            value={tab}
+          />
+        }
         subtitle={tab === 'history' ? 'Local runs, tools, and model usage.' : t.agents.subtitle}
         title={tab === 'history' ? 'Activity' : t.agents.title}
       />
