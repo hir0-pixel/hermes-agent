@@ -74,7 +74,7 @@ import {
 import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 
 import { BlueprintSlotControl, blueprintSlotHelp, cleanBlueprintFieldError, initialBlueprintValues } from './blueprints'
-import { mutateAndRefreshCronJobs, refreshCronJobs, triggerAndRefreshCronJobs } from './cron-actions'
+import { mutateAndRefreshCronJobs, refreshCronJobs, setCronFeatureOpen, triggerAndRefreshCronJobs } from './cron-actions'
 import {
   cronEditorUpdates,
   cronModelChoiceValue,
@@ -299,6 +299,13 @@ interface CronViewProps extends React.ComponentProps<'section'> {
 }
 
 export function CronView({ onClose, onOpenSession, setStatusbarItemGroup: _setStatusbarItemGroup }: CronViewProps) {
+  // Mark the feature open before any refresh effect in this render. A deferred
+  // useEffect left the first getCronJobs() without feature=1, so the packaged
+  // gateway stubbed [] and never started Python (Windows smoke).
+  setCronFeatureOpen(true)
+  useEffect(() => {
+    return () => setCronFeatureOpen(false)
+  }, [])
   const { t } = useI18n()
   const c = t.cron
   // Source of truth is the shared atom (also fed by the controller poll), so the

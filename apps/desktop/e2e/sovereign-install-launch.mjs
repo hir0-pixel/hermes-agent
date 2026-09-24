@@ -40,8 +40,9 @@ try {
   await page.waitForTimeout(2_000)
   const cronProcesses = processTree(mainPid)
   await page.screenshot({ path: path.join(output, 'cron.png'), animations: 'disabled' })
+  fs.writeFileSync(path.join(output, 'cron-processes.json'), JSON.stringify(cronProcesses, null, 2))
   if (!cronProcesses.some(row => isPythonComm(row.comm))) {
-    throw new Error('Cron did not start bundled Python')
+    throw new Error(`Cron did not start bundled Python; tree=${JSON.stringify(cronProcesses)}`)
   }
 
   await page.keyboard.press('Escape')
