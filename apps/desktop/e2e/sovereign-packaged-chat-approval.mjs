@@ -9,10 +9,11 @@ const desktop = path.resolve(import.meta.dirname, '..')
 const executablePath = path.join(desktop, 'release/mac-arm64/Hermes.app/Contents/MacOS/Hermes')
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'sovereign-chat-'))
 const workspace = path.join(sandbox, 'workspace')
+const outFile = path.join(sandbox, 'approval-out.txt')
 const output = process.env.SOVEREIGN_CHAT_E2E_OUTPUT || path.join(desktop, 'release/sovereign-chat')
 fs.mkdirSync(workspace, { recursive: true })
 fs.mkdirSync(output, { recursive: true })
-fs.writeFileSync(path.join(workspace, 'hello.txt'), 'sovereign-packaged-ok\n')
+fs.writeFileSync(path.join(workspace, 'README.md'), 'sandbox workspace for packaged chat e2e\n')
 
 const tags = JSON.parse(execFileSync('curl', ['-s', 'http://127.0.0.1:11434/api/tags'], { encoding: 'utf8' }))
 const names = (tags.models || []).map(m => m.name)
@@ -27,41 +28,82 @@ const app = await _electron.launch({
     PATH: '/usr/bin:/bin:/opt/homebrew/bin',
     HERMES_HOME: path.join(sandbox, 'hermes-home'),
     JCODE_HOME: path.join(sandbox, 'jcode-home'),
+    HERMES_DESKTOP_CWD: workspace,
+    TERMINAL_CWD: workspace,
     SOVEREIGN_PROVIDER: 'ollama',
     SOVEREIGN_MODEL: 'qwen3.8:27b',
-    TERMINAL_CWD: workspace,
+    SOVEREIGN_OLLAMA_NUM_CTX: '32768',
+    HERMES_SKIP_INTRO: '1',
   }
 })
+
+const dump = async (page, name) => {
+  try {
+    await page.screenshot({ path: path.join(output, `${name}.png`), animations: 'disabled' })
+    fs.writeFileSync(path.join(output, `${name}.txt`), (await page.locator('body').innerText()).slice(0, 12000))
+  } catch (err) {
+    fs.writeFileSync(path.join(output, `${name}-dump-error.txt`), String(err))
+  }
+}
+
 try {
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
-  await page.getByText('Gateway: ready', { exact: false }).waitFor({ timeout: 180_000 })
-  await page.waitForTimeout(3_000)
+  await page.getByText('ready', { exact: true }).waitFor({ timeout: 180_000 })
+  const composer = page.locator('[aria-label="Message"]').first()
+  await composer.waitFor({ timeout: 120_000 })
+  await page.waitForTimeout(2_000)
 
-  // Skip any first-run film / guest chrome if present.
-  for (const label of ['Skip', 'Skip intro', 'Get started', 'Continue']) {
+  for (const label of ['Skip', 'Skip intro', 'Get started', 'Continue', 'Not now']) {
     const btn = page.getByRole('button', { name: label })
     if (await btn.count()) await btn.first().click({ timeout: 2_000 }).catch(() => {})
   }
 
-  const composer = page.locator('[aria-label="Message"]').first()
-  await composer.waitFor({ timeout: 60_000 })
   await composer.click()
-  const prompt = 'Use a shell command to print the contents of hello.txt in the current directory. Do not invent the contents.'
-  await page.keyboard.type(prompt, { delay: 5 })
+  // Truncating redirect outside the session cwd is RiskLevel::Low → sovereign
+  // pre-tool approval. In-cwd `echo > out.txt` is Safe and never shows a card.
+  // One line only: keyboard.type('\\n') submits the composer early.
+  const prompt =
+    `In the current working directory, run EXACTLY this shell command and nothing else: echo sovereign-packaged-ok > ${outFile}. Then reply with the file contents. Do not invent the contents; use the shell tool.`
+  await composer.fill(prompt)
   await page.keyboard.press('Enter')
+  await dump(page, 'after-send')
 
   const run = page.locator('[data-approval-run]').first()
-  await run.waitFor({ timeout: 300_000 })
-  await page.screenshot({ path: path.join(output, 'approval.png'), animations: 'disabled' })
+  try {
+    await run.waitFor({ timeout: 300_000 })
+  } catch (err) {
+    await dump(page, 'no-approval')
+    const sessions = path.join(sandbox, 'jcode-home/sessions')
+    if (fs.existsSync(sessions)) {
+      execFileSync('cp', ['-R', sessions, path.join(output, 'sessions')])
+    }
+    throw err
+  }
+  await dump(page, 'approval')
   await run.click()
 
-  await page.getByText(/sovereign-packaged-ok/, { timeout: 300_000 }).waitFor()
-  await page.screenshot({ path: path.join(output, 'chat-done.png'), animations: 'disabled' })
-  const body = await page.locator('body').innerText()
-  fs.writeFileSync(path.join(output, 'chat.txt'), body.slice(0, 8000))
-  if (!/sovereign-packaged-ok/.test(body)) throw new Error('Tool result not visible after approval')
-  console.log(JSON.stringify({ sandbox, output, ok: true }, null, 2))
+  // Don't match the user prompt or the approval card's command preview.
+  const deadline = Date.now() + 300_000
+  while (Date.now() < deadline) {
+    if (fs.existsSync(outFile) && fs.readFileSync(outFile, 'utf8').includes('sovereign-packaged-ok')) {
+      break
+    }
+    await page.waitForTimeout(1_000)
+  }
+  if (!fs.existsSync(outFile) || !fs.readFileSync(outFile, 'utf8').includes('sovereign-packaged-ok')) {
+    await dump(page, 'no-outfile')
+    throw new Error(`tool did not write ${outFile} after approval`)
+  }
+  await page.getByText(/Here is the exact content|exact content of|sovereign-packaged-ok/, { timeout: 120_000 }).first().waitFor().catch(() => {})
+  await dump(page, 'chat-done')
+  console.log(JSON.stringify({
+    sandbox,
+    output,
+    ok: true,
+    outFile,
+    contents: fs.readFileSync(outFile, 'utf8').trim(),
+  }, null, 2))
 } finally {
   await app.close()
 }
