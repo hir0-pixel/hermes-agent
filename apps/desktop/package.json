@@ -35,6 +35,7 @@
     "pack": "npm run build && npm run builder -- --dir --publish never",
     "dist": "npm run build && npm run builder",
     "dist:mac": "npm run build && npm run builder -- --mac",
+    "stage:sovereign-python": "node scripts/stage-sovereign-python.mjs",
     "dist:mac:dmg": "npm run build && npm run builder -- --mac dmg",
     "dist:mac:zip": "npm run build && npm run builder -- --mac zip",
     "dist:win": "npm run build && npm run builder -- --win",
@@ -218,6 +219,14 @@
     "beforePack": "scripts/before-pack.mjs",
     "afterExtract": "scripts/after-extract.mjs",
     "extraResources": [
+      {
+        "from": "build/sovereign-python",
+        "to": "sovereign-python"
+      },
+      {
+        "from": "build/sovereign",
+        "to": "sovereign"
+      },
       {
         "from": "build/install-stamp.json",
         "to": "install-stamp.json"

@@ -2728,6 +2728,7 @@ const backendSupportsServe = createBackendServeSupportResolver(HERMES_HOME, reme
 // runtime actually understands: unchanged when `serve` is supported, or
 // rewritten to `dashboard --no-open` for older runtimes.
 async function getBackendArgsForRuntime(backend) {
+  if (backend.kind === 'sovereign') return backend.args
   return (await backendSupportsServe(backend)) ? backend.args : dashboardFallbackArgs(backend.args)
 }
 
@@ -5270,6 +5271,44 @@ async function createActiveBackend(backendArgs) {
 }
 
 async function resolveHermesBackend(backendArgs) {
+  if (IS_PACKAGED) {
+    const command = path.join(process.resourcesPath, 'sovereign', IS_WINDOWS ? 'sovereign.exe' : 'sovereign')
+    const pythonRoot = path.join(process.resourcesPath, 'sovereign-python')
+    const python = path.join(pythonRoot, 'runtime', IS_WINDOWS ? 'python.exe' : 'bin/python3.12')
+    if (!fileExists(command)) {
+      throw new Error(`The bundled Sovereign engine is missing: ${command}`)
+    }
+    if (!fileExists(python)) {
+      throw new Error(`The bundled Hermes feature runtime is missing: ${python}`)
+    }
+    let provider = process.env.SOVEREIGN_PROVIDER?.trim() || ''
+    let model = process.env.SOVEREIGN_MODEL?.trim() || ''
+    if (!provider) {
+      try {
+        const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(350) })
+        const tags = (await response.json()).models
+        const names = Array.isArray(tags) ? tags.map(item => item.name).filter(Boolean) : []
+        if (names.length) {
+          provider = 'ollama'
+          model = names.includes('qwen3.8:27b') ? 'qwen3.8:27b' : names[0]
+        }
+      } catch {
+        // No local Ollama server; the engine's deferred-auth mode opens for API-key setup.
+      }
+    }
+    const args = [...(provider ? ['--provider', provider] : []), ...(model ? ['--model', model] : []), ...backendArgs]
+    return {
+      kind: 'sovereign', label: 'bundled Sovereign engine', command, args,
+      env: {
+        SOVEREIGN_HERMES_PYTHON: python,
+        SOVEREIGN_HERMES_PYTHONPATH: [path.join(pythonRoot, 'source'), path.join(pythonRoot, 'packages')].join(path.delimiter),
+        SOVEREIGN_HERMES_DEFAULTS: path.join(pythonRoot, 'defaults.json'),
+        SOVEREIGN_HERMES_TOOLS_DIR: path.join(pythonRoot, 'tools')
+      },
+      bootstrap: false, shell: false
+    }
+  }
+
   // 1. Explicit override -- HERMES_DESKTOP_HERMES_ROOT points at a developer
   //    checkout. Honour it as-is (no bootstrap; the user is driving).
   const overrideRoot = process.env.HERMES_DESKTOP_HERMES_ROOT && path.resolve(process.env.HERMES_DESKTOP_HERMES_ROOT)

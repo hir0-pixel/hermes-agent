@@ -57,7 +57,8 @@
  *   - electronPlatformName: 'win32' | 'darwin' | 'linux'
  *   - arch:                 Arch enum (0=ia32, 1=x64, 2=armv7l, 3=arm64, 4=universal)
  */
-import { existsSync, rmSync, renameSync } from 'node:fs'
+import { existsSync, rmSync, renameSync, copyFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { Arch } from 'electron-builder'
 import { removeDirSync, stageNodePty, stageGetWindows } from './stage-native-deps.mjs'
@@ -147,6 +148,26 @@ export default async function beforePack(context) {
     const platform = context && context.electronPlatformName
     const archName = context && typeof context.arch === 'number' ? Arch[context.arch] : undefined
     if (platform && archName) {
+      const engineRoot = process.env.SOVEREIGN_ENGINE_ROOT || path.resolve(import.meta.dirname, '../../../../sovereign-engine')
+      const binaryName = platform === 'win32' ? 'sovereign.exe' : 'sovereign'
+      const targetTriple = platform === 'darwin' ? `${archName === 'arm64' ? 'aarch64' : 'x86_64'}-apple-darwin` : null
+      const binary = process.env.SOVEREIGN_BIN || (archName === process.arch
+        ? path.join(engineRoot, 'target', 'release', binaryName)
+        : path.join(engineRoot, 'target', targetTriple || `${archName}-pc-windows-msvc`, 'release', binaryName))
+      if (!existsSync(binary)) throw new Error(`Sovereign ${platform}-${archName} binary missing: ${binary}`)
+      if (platform === 'darwin') {
+        const binaryArchs = execFileSync('lipo', ['-archs', binary], { encoding: 'utf8' }).trim().split(/\s+/)
+        const expected = archName === 'arm64' ? 'arm64' : 'x86_64'
+        if (!binaryArchs.includes(expected)) throw new Error(`Sovereign binary ${binary} does not contain ${expected}`)
+        const python = path.join(import.meta.dirname, '..', 'build', 'sovereign-python', 'runtime', 'bin', 'python3.12')
+        if (!existsSync(python)) throw new Error('Run npm run stage:sovereign-python before packaging')
+        const pythonArchs = execFileSync('lipo', ['-archs', python], { encoding: 'utf8' }).trim().split(/\s+/)
+        if (!pythonArchs.includes(expected)) throw new Error(`Bundled Python does not contain ${expected}`)
+      }
+      const staged = path.join(import.meta.dirname, '..', 'build', 'sovereign')
+      mkdirSync(staged, { recursive: true })
+      copyFileSync(binary, path.join(staged, binaryName))
+      chmodSync(path.join(staged, binaryName), 0o755)
       buildHudModifierMonitor({ platform, arch: archName })
       if (archName === 'universal') {
         console.warn(
