@@ -72,20 +72,28 @@ function useBarSweep(key: string | null, ready: boolean) {
   const ref = useRef<HTMLOListElement>(null)
 
   useEffect(() => {
-    if (!key || !ready || !motionAllowed(ref.current)) {
+    // A hidden window may never tick the animation, and the sweep starts empty.
+    if (!key || !ready || document.hidden || !motionAllowed(ref.current)) {
       return
     }
 
-    ref.current.querySelectorAll<HTMLElement>('[data-bar-fill]').forEach((fill, index) => {
-      if (typeof fill.animate === 'function') {
-        fill.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], {
-          delay: index * 40,
-          duration: 380,
-          easing: EASE_OUT,
-          fill: 'backwards'
-        })
-      }
-    })
+    const sweeps = [...ref.current.querySelectorAll<HTMLElement>('[data-bar-fill]')].map((fill, index) =>
+      fill.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], {
+        delay: index * 40,
+        duration: 380,
+        easing: EASE_OUT,
+        fill: 'backwards'
+      })
+    )
+
+    // The bars must never stay empty: if the animation stalls, jump to the end.
+    const settle = () => sweeps.forEach(sweep => sweep.playState !== 'finished' && sweep.finish())
+    const guard = window.setTimeout(settle, 1000)
+
+    return () => {
+      window.clearTimeout(guard)
+      settle()
+    }
   }, [key, ready])
 
   return ref

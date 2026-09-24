@@ -33,7 +33,9 @@ try {
   await page.getByText('Timeline').waitFor({ timeout: 30_000 })
   await page.getByRole('button', { name: /Run complete/ }).first().click()
   await page.getByText('Model call').first().waitFor({ timeout: 30_000 })
-  for (const [name, width, height] of [['wide', 1220, 800], ['narrow', 720, 680]]) {
+  // Sizing the window right before each shot keeps the page in step with it
+  // (after a reload Electron otherwise reports a stale viewport and density).
+  const capture = async (name, width, height) => {
     await app.evaluate(({ BrowserWindow }, size) => {
       const window = BrowserWindow.getAllWindows()[0]
       window?.unmaximize()
@@ -45,6 +47,8 @@ try {
     console.log(name, viewport)
     await page.screenshot({ path: path.join(output, `observability-${name}.png`), clip: { x: 0, y: 0, width: Math.min(width, viewport.width), height: Math.min(height, viewport.height) }, animations: 'disabled' })
   }
+  await capture('wide', 1220, 800)
+  await capture('narrow', 720, 680)
   // Dark appearance: the view must use theme tokens, never fixed light colours.
   await page.evaluate(() => {
     // The default profile reads the legacy key first, so set both.
@@ -58,10 +62,8 @@ try {
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByRole('button', { name: /Run complete/ }).first().click()
   await page.getByText('Model call').first().waitFor({ timeout: 30_000 })
-  await page.waitForTimeout(800)
   if (!(await page.evaluate(() => document.documentElement.classList.contains('dark')))) throw new Error('dark mode did not apply')
-  // Same window as the narrow capture; innerWidth is stale after the reload.
-  await page.screenshot({ path: path.join(output, 'observability-dark.png'), clip: { x: 0, y: 0, width: 800, height: 755 }, animations: 'disabled' })
+  await capture('dark', 720, 680)
   await page.getByRole('button', { name: 'Live' }).click()
   await page.getByRole('button', { name: 'History' }).click()
   await page.getByText(/Content capture (on|off)/).waitFor()
