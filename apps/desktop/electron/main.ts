@@ -5303,7 +5303,9 @@ async function resolveHermesBackend(backendArgs) {
         SOVEREIGN_HERMES_PYTHON: python,
         SOVEREIGN_HERMES_PYTHONPATH: [path.join(pythonRoot, 'source'), path.join(pythonRoot, 'packages')].join(path.delimiter),
         SOVEREIGN_HERMES_DEFAULTS: path.join(pythonRoot, 'defaults.json'),
-        SOVEREIGN_HERMES_TOOLS_DIR: path.join(pythonRoot, 'tools')
+        SOVEREIGN_HERMES_TOOLS_DIR: path.join(pythonRoot, 'tools'),
+        // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
+        SOVEREIGN_OLLAMA_NUM_CTX: process.env.SOVEREIGN_OLLAMA_NUM_CTX || '32768'
       },
       bootstrap: false, shell: false
     }
@@ -12748,6 +12750,7 @@ async function runPoolBackendStart(
           // Pin the gateway's tool/terminal cwd to the same directory we chose for
           // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
           // can still point at the install dir even when spawn cwd is home.
+          HERMES_DESKTOP_CWD: hermesCwd,
           TERMINAL_CWD: hermesCwd,
           HERMES_DASHBOARD_SESSION_TOKEN: token,
           // Marks this dashboard backend as desktop-spawned so it runs the cron
@@ -17783,8 +17786,40 @@ app.on('will-quit', () => {
   sshIsolatedKeepalives.stopAll()
   destroyKeepaliveAgents()
   nativeNotifications.dispose()
+  // Best-effort: if sovereign exited uncleanly, still drop the warmed Ollama
+  // alias so it is not left resident after the desktop closes.
+  void unloadSovereignOllamaOnQuit()
   quitFinalization.arm()
 })
+
+async function unloadSovereignOllamaOnQuit() {
+  try {
+    const homes = [
+      process.env.JCODE_HOME,
+      process.env.HERMES_HOME && path.join(process.env.HERMES_HOME, '..', 'jcode-home'),
+    ].filter(Boolean)
+    let model = null
+    for (const home of homes) {
+      const warmPath = path.join(String(home), 'sovereign-ollama-warm.json')
+      if (!fileExists(warmPath)) continue
+      try {
+        model = JSON.parse(fs.readFileSync(warmPath, 'utf8')).model
+      } catch {
+        model = null
+      }
+      if (model) break
+    }
+    if (!model) return
+    await fetch('http://127.0.0.1:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keep_alive: 0 }),
+      signal: AbortSignal.timeout(8_000)
+    }).catch(() => {})
+  } catch {
+    // Quit path must never throw.
+  }
+}
 
 app.on('quit', () => {
   quitFinalization.cancel()
