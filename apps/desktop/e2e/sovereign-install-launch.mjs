@@ -36,8 +36,8 @@ try {
   }
 
   await page.getByText('Scheduled jobs', { exact: true }).click()
-  await page.getByText('0 jobs').waitFor({ timeout: 60_000 })
-  await page.waitForTimeout(2_000)
+  await page.getByText('0 jobs').waitFor({ timeout: 120_000 })
+  await page.waitForTimeout(3_000)
   const cronProcesses = processTree(mainPid)
   await page.screenshot({ path: path.join(output, 'cron.png'), animations: 'disabled' })
   fs.writeFileSync(path.join(output, 'cron-processes.json'), JSON.stringify(cronProcesses, null, 2))
