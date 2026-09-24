@@ -164,6 +164,10 @@ export default async function beforePack(context) {
         const pythonArchs = execFileSync('lipo', ['-archs', python], { encoding: 'utf8' }).trim().split(/\s+/)
         if (!pythonArchs.includes(expected)) throw new Error(`Bundled Python does not contain ${expected}`)
       }
+      if (platform === 'win32') {
+        const python = path.join(import.meta.dirname, '..', 'build', 'sovereign-python', 'runtime', 'python.exe')
+        if (!existsSync(python)) throw new Error('Run npm run stage:sovereign-python before packaging (Windows needs runtime/python.exe)')
+      }
       const staged = path.join(import.meta.dirname, '..', 'build', 'sovereign')
       mkdirSync(staged, { recursive: true })
       copyFileSync(binary, path.join(staged, binaryName))

@@ -1,0 +1,92 @@
+# Build unsigned Windows x64 NSIS with the bundled Sovereign engine + Hermes Python.
+name: Sovereign Windows NSIS
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine_repository:
+        description: GitHub repo that contains the sovereign/jcode engine (owner/name)
+        required: true
+        default: '1jehuang/jcode'
+      engine_ref:
+        description: Branch or SHA of the engine repo
+        required: true
+        default: 'feature/sovereign-observability'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sovereign-windows-nsis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nsis:
+    name: NSIS (windows-x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout hermes-agent
+        uses: actions/checkout@v4
+
+      - name: Checkout sovereign engine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.engine_repository }}
+          ref: ${{ inputs.engine_ref }}
+          path: sovereign-engine
+          # Public fork/default; override with a PAT secret if the engine is private.
+          token: ${{ secrets.SOVEREIGN_ENGINE_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.9.28'
+          enable-cache: true
+
+      - name: npm ci (workspace)
+        run: npm ci
+
+      - name: Build sovereign.exe
+        working-directory: sovereign-engine
+        run: cargo build --release --bin sovereign
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Stage Sovereign Python (Windows x64)
+        working-directory: apps/desktop
+        run: npm run stage:sovereign-python
+
+      - name: Build NSIS installer
+        working-directory: apps/desktop
+        run: npm run dist:win:nsis
+        env:
+          SOVEREIGN_ENGINE_ROOT: ${{ github.workspace }}\sovereign-engine
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release artifacts
+        working-directory: apps/desktop/release
+        shell: bash
+        run: ls -lah
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hermes-windows-x64-nsis
+          path: |
+            apps/desktop/release/Hermes-*-win-x64.exe
+            apps/desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 14
