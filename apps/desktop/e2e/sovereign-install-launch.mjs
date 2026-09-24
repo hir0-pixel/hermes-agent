@@ -27,13 +27,13 @@ try {
   await page.screenshot({ path: path.join(output, 'first-run.png'), animations: 'disabled' })
   const text = (await page.locator('body').innerText()).slice(0, 3000)
   const processes = processTree(mainPid)
+  fs.writeFileSync(path.join(output, 'first-run.txt'), `${text}\n\n${JSON.stringify(processes, null, 2)}\n`)
   if (processes.filter(row => isSovereignComm(row.comm)).length !== 1) {
-    throw new Error('Expected one Sovereign process')
+    throw new Error(`Expected one Sovereign process; tree=${JSON.stringify(processes)}`)
   }
   if (processes.some(row => isPythonComm(row.comm))) {
-    throw new Error('Python started before a feature opened')
+    throw new Error(`Python started before a feature opened; tree=${JSON.stringify(processes)}`)
   }
-  fs.writeFileSync(path.join(output, 'first-run.txt'), `${text}\n\n${JSON.stringify(processes, null, 2)}\n`)
 
   await page.getByText('Scheduled jobs', { exact: true }).click()
   await page.getByText('0 jobs').waitFor({ timeout: 60_000 })
