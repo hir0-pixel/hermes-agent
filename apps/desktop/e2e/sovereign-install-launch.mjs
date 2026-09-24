@@ -37,22 +37,29 @@ try {
   const mainPid = app.process().pid
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(10_000)
-  console.log('editors', await page.locator('textarea,[contenteditable=true]').evaluateAll(nodes => nodes.map(node => ({ tag: node.tagName, outer: node.outerHTML.slice(0, 300) }))))
   await page.screenshot({ path: path.join(output, 'first-run.png'), animations: 'disabled' })
   const text = (await page.locator('body').innerText()).slice(0, 3000)
   const processes = tree(mainPid)
   if (processes.filter(row => row.comm.endsWith('/sovereign')).length !== 1) throw new Error('Expected one Sovereign process')
   if (processes.some(row => /python/i.test(row.comm))) throw new Error('Python started before a feature opened')
   fs.writeFileSync(path.join(output, 'first-run.txt'), `${text}\n\n${JSON.stringify(processes, null, 2)}\n`)
+
   await page.getByText('Scheduled jobs', { exact: true }).click()
-  await page.waitForTimeout(5_000)
+  await page.getByText('0 jobs').waitFor({ timeout: 60_000 })
+  await page.waitForTimeout(2_000)
   const cronProcesses = tree(mainPid)
   await page.screenshot({ path: path.join(output, 'cron.png'), animations: 'disabled' })
   if (!cronProcesses.some(row => /python/i.test(row.comm))) throw new Error('Cron did not start bundled Python')
+
+  // Esc dismisses OverlayView; press twice in case a nested surface ate the first.
   await page.keyboard.press('Escape')
-  await page.waitForTimeout(5_000)
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Escape')
+  await page.getByText('0 jobs').waitFor({ state: 'hidden', timeout: 15_000 })
+  await page.waitForTimeout(4_000)
   const idleProcesses = tree(mainPid)
   if (idleProcesses.some(row => /python/i.test(row.comm))) throw new Error('Python did not stop after idle timeout')
+  fs.writeFileSync(path.join(output, 'idle.json'), JSON.stringify({ sandbox, processes, cronProcesses, idleProcesses }, null, 2))
   console.log(JSON.stringify({ sandbox, processes, cronProcesses, idleProcesses }, null, 2))
 } finally {
   await app.close()
