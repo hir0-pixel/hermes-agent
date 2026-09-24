@@ -7,11 +7,19 @@ on:
       engine_repository:
         description: GitHub repo that contains the sovereign/jcode engine (owner/name)
         required: true
-        default: '1jehuang/jcode'
+        default: 'hir0-pixel/jcode'
       engine_ref:
         description: Branch or SHA of the engine repo
         required: true
         default: 'feature/sovereign-observability'
+  push:
+    branches:
+      - feature/sovereign-observability
+    paths:
+      - 'apps/desktop/scripts/stage-sovereign-python.mjs'
+      - 'apps/desktop/scripts/before-pack.mjs'
+      - 'apps/desktop/package.json'
+      - '.github/workflows/sovereign-windows-nsis.yml'
 
 permissions:
   contents: read
@@ -29,13 +37,24 @@ jobs:
       - name: Checkout hermes-agent
         uses: actions/checkout@v4
 
+      - name: Resolve engine checkout
+        id: engine
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "repository=${{ inputs.engine_repository }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ inputs.engine_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "repository=hir0-pixel/jcode" >> "$GITHUB_OUTPUT"
+            echo "ref=feature/sovereign-observability" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout sovereign engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.engine_repository }}
-          ref: ${{ inputs.engine_ref }}
+          repository: ${{ steps.engine.outputs.repository }}
+          ref: ${{ steps.engine.outputs.ref }}
           path: sovereign-engine
-          # Public fork/default; override with a PAT secret if the engine is private.
           token: ${{ secrets.SOVEREIGN_ENGINE_CHECKOUT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
