@@ -5,8 +5,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 
+import { assertPackagedHermesExists, sovereignSandboxEnv } from './sovereign-packaged-paths.mjs'
+import { isPythonComm, isSovereignComm, processTree } from './sovereign-process-utils.mjs'
+
 const desktop = path.resolve(import.meta.dirname, '..')
-const executablePath = path.join(desktop, 'release/mac-arm64/Hermes.app/Contents/MacOS/Hermes')
+const executablePath = assertPackagedHermesExists()
+if (process.platform === 'win32') {
+  throw new Error('sovereign-packaged-cron-due is Unix-only (shell cron probe); skip on Windows CI')
+}
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'sovereign-cron-due-'))
 const hermesHome = path.join(sandbox, 'hermes-home')
 const output = process.env.SOVEREIGN_CRON_DUE_E2E_OUTPUT || path.join(desktop, 'release/sovereign-cron-due')

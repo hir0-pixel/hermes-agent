@@ -14,6 +14,11 @@ const targets = {
     pythonRel: path.join('bin', 'python3.12'),
     uvName: 'uv',
   },
+  'darwin-x64': {
+    runtimeDir: `cpython-${version}-macos-x86_64-none`,
+    pythonRel: path.join('bin', 'python3.12'),
+    uvName: 'uv',
+  },
   'win32-x64': {
     runtimeDir: `cpython-${version}-windows-x86_64-none`,
     pythonRel: 'python.exe',
@@ -25,7 +30,7 @@ const key = `${process.platform}-${process.arch}`
 const target = targets[key]
 if (!target) {
   throw new Error(
-    `Python staging currently supports macOS arm64 and Windows x64 only (got ${key})`
+    `Python staging supports macOS arm64/x64 and Windows x64 only (got ${key})`
   )
 }
 

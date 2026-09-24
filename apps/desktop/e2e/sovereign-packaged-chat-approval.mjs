@@ -5,8 +5,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 
+import { assertPackagedHermesExists, sovereignSandboxEnv } from './sovereign-packaged-paths.mjs'
+
 const desktop = path.resolve(import.meta.dirname, '..')
-const executablePath = path.join(desktop, 'release/mac-arm64/Hermes.app/Contents/MacOS/Hermes')
+const executablePath = assertPackagedHermesExists()
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'sovereign-chat-'))
 const workspace = path.join(sandbox, 'workspace')
 const outFile = path.join(sandbox, 'approval-out.txt')
@@ -23,11 +25,7 @@ const app = await _electron.launch({
   executablePath,
   args: [`--user-data-dir=${path.join(sandbox, 'user-data')}`],
   env: {
-    ...process.env,
-    HOME: sandbox,
-    PATH: '/usr/bin:/bin:/opt/homebrew/bin',
-    HERMES_HOME: path.join(sandbox, 'hermes-home'),
-    JCODE_HOME: path.join(sandbox, 'jcode-home'),
+    ...sovereignSandboxEnv(sandbox),
     HERMES_DESKTOP_CWD: workspace,
     TERMINAL_CWD: workspace,
     SOVEREIGN_PROVIDER: 'ollama',

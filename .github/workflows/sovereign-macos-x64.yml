@@ -1,5 +1,6 @@
-# Build unsigned Windows x64 NSIS with the bundled Sovereign engine + Hermes Python.
-name: Sovereign Windows NSIS
+# Experimental unsigned macOS x64 Hermes zip with bundled Sovereign engine.
+# See .github/HANDOFF-sovereign-macos-x64.md for Apple Silicon / cross-pack blockers.
+name: Sovereign macOS x64 pack
 
 on:
   workflow_dispatch:
@@ -18,21 +19,22 @@ on:
     paths:
       - 'apps/desktop/scripts/stage-sovereign-python.mjs'
       - 'apps/desktop/scripts/before-pack.mjs'
-      - 'apps/desktop/package.json'
       - 'apps/desktop/e2e/sovereign-*.mjs'
-      - '.github/workflows/sovereign-windows-nsis.yml'
+      - '.github/workflows/sovereign-macos-x64.yml'
+      - '.github/HANDOFF-sovereign-macos-x64.md'
 
 permissions:
   contents: read
 
 concurrency:
-  group: sovereign-windows-nsis-${{ github.ref }}
+  group: sovereign-macos-x64-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  nsis:
-    name: NSIS (windows-x64)
-    runs-on: windows-latest
+  mac-x64:
+    name: Pack + smoke (macOS x64)
+    # Intel runner: native x86_64 sovereign + uv Python + electron-builder --x64.
+    runs-on: macos-13
     timeout-minutes: 120
     steps:
       - name: Checkout hermes-agent
@@ -66,8 +68,6 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -78,49 +78,49 @@ jobs:
       - name: npm ci (workspace)
         run: npm ci
 
-      - name: Build sovereign.exe
+      - name: Build sovereign (native x64)
         working-directory: sovereign-engine
         run: cargo build --release --bin sovereign
-        env:
-          CARGO_TERM_COLOR: always
 
-      - name: Stage Sovereign Python (Windows x64)
+      - name: Stage Sovereign Python (macOS x64)
         working-directory: apps/desktop
         run: npm run stage:sovereign-python
 
-      - name: Build NSIS installer
+      - name: Pack macOS x64 zip
         working-directory: apps/desktop
-        run: npm run dist:win:nsis
+        run: npm run build && npm run builder -- --mac zip --x64
         env:
-          SOVEREIGN_ENGINE_ROOT: ${{ github.workspace }}\sovereign-engine
+          SOVEREIGN_ENGINE_ROOT: ${{ github.workspace }}/sovereign-engine
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: List release artifacts
-        working-directory: apps/desktop/release
-        shell: bash
-        run: ls -lah
-
-      - name: Verify win-unpacked for smoke
+      - name: Unzip for smoke (Hermes.app)
         working-directory: apps/desktop
-        shell: bash
-        run: test -f release/win-unpacked/Hermes.exe
+        run: |
+          set -euo pipefail
+          rm -rf release/mac-smoke
+          mkdir -p release/mac-smoke
+          zip="$(ls -1 release/Hermes-*-mac-x64.zip | head -1)"
+          ditto -x -k "$zip" release/mac-smoke
+          test -d release/mac-smoke/Hermes.app
 
       - name: Sovereign smoke — launch + cron idle
         working-directory: apps/desktop
         env:
+          SOVEREIGN_PACKAGED_ROOT: ${{ github.workspace }}/apps/desktop/release/mac-smoke
           SOVEREIGN_INSTALL_E2E_OUTPUT: ${{ runner.temp }}/sovereign-install
         run: node e2e/sovereign-install-launch.mjs
 
-      - name: Sovereign smoke — orphan cleanup (quit + taskkill)
+      - name: Sovereign smoke — orphan cleanup
         working-directory: apps/desktop
         env:
+          SOVEREIGN_PACKAGED_ROOT: ${{ github.workspace }}/apps/desktop/release/mac-smoke
           SOVEREIGN_ORPHAN_E2E_OUTPUT: ${{ runner.temp }}/sovereign-orphan
         run: node e2e/sovereign-packaged-orphan-cleanup.mjs
 
       - name: Sovereign smoke — API key (headless engine)
         working-directory: apps/desktop
         env:
+          SOVEREIGN_PACKAGED_ROOT: ${{ github.workspace }}/apps/desktop/release/mac-smoke
           SOVEREIGN_APIKEY_E2E_OUTPUT: ${{ runner.temp }}/sovereign-apikey
         run: node e2e/sovereign-packaged-apikey.mjs
 
@@ -128,22 +128,21 @@ jobs:
         working-directory: apps/desktop
         shell: bash
         env:
+          SOVEREIGN_PACKAGED_ROOT: ${{ github.workspace }}/apps/desktop/release/mac-smoke
           SOVEREIGN_CHAT_E2E_OUTPUT: ${{ runner.temp }}/sovereign-chat
         run: |
           set -euo pipefail
           if curl -sf http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
             node e2e/sovereign-packaged-chat-approval.mjs
           else
-            echo "::notice title=Ollama skipped::GitHub-hosted Windows runners have no Ollama/GPU — chat smoke skipped; launch/orphan/apikey still gate the bundle."
+            echo "::notice title=Ollama skipped::No Ollama on macos-13 GHA runner — chat smoke skipped (expected without GPU/local service)."
           fi
 
-      - name: Upload NSIS installer
+      - name: Upload macOS x64 zip
         uses: actions/upload-artifact@v4
         with:
-          name: Hermes-windows-x64-nsis
-          path: |
-            apps/desktop/release/Hermes-*-win-x64.exe
-            apps/desktop/release/*.exe
+          name: Hermes-macos-x64-zip
+          path: apps/desktop/release/Hermes-*-mac-x64.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -151,7 +150,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sovereign-windows-smoke-logs
+          name: sovereign-macos-x64-smoke-logs
           path: |
             ${{ runner.temp }}/sovereign-*
           if-no-files-found: ignore

@@ -6,9 +6,11 @@ import { _electron } from '@playwright/test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { assertPackagedHermesExists } from './sovereign-packaged-paths.mjs'
 
 const desktop = path.resolve(import.meta.dirname, '..')
-const executablePath = path.join(desktop, 'release/mac-arm64/Hermes.app/Contents/MacOS/Hermes')
+
+const executablePath = assertPackagedHermesExists()
 const sovereign = process.env.SOVEREIGN_BIN
 const ledger = process.env.SOVEREIGN_SCREENSHOT_HOME
 const output = process.env.SOVEREIGN_SCREENSHOT_OUTPUT || path.join(desktop, 'release/sovereign-observability')
